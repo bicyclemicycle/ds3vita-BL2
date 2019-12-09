@@ -20,7 +20,7 @@
 
 **Note**: If you use Mai, don't put the plugin inside ux0:/plugins because Mai will load all stuff you put in there...
 
-The original code written by xerpi was modified using the ds4vita plugin to understand hooking and patching inputs to the PS Vita. The locations for inputs are mostly arbitrary and made to be a default location a user might click. Either way, it works for me. As my first release, someone more reputable please review and verify the code (and plugin if you want). Thank you xerpi.
+The original code written by xerpi. The code was modified using the ds4vita plugin to understand hooking and patching inputs to the PS Vita. The locations for inputs are mostly arbitrary and made to be a default location a user might click. Either way, it works for me. As my first release, someone more reputable please review and verify the code (and plugin if you want). Thank you xerpi.
 
 PS Vitas  known to work (so far):
 1000:3.60
