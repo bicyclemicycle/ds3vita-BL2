@@ -273,8 +273,108 @@ DECL_FUNC_HOOK(SceCtrl_ksceCtrlGetControllerPortInfo, SceCtrlPortInfo *info)
 	return ret;
 }
 
+// Following function patches the touch data so that L2, R2, L3, and R3 register
+static void patch_touch_data(SceUInt32 port, SceTouchData *pData, SceUInt32 nBufs,
+			    struct ds3_input_report *ds3)
+{
+	unsigned int i;
+	if (port == SCE_TOUCH_PORT_FRONT){
+		i = 0;
+		unsigned int num_reports = 0;
+
+		if (ds3->r2) {
+			pData->report[i].id = i;
+			pData->report[i].x = (1800);
+			pData->report[i].y = (850);
+			num_reports++;
+			i++;
+		}
+
+		if (ds3->l2) {
+			pData->report[i].id = i;
+			pData->report[i].x = (100);
+			pData->report[i].y = (850);
+			num_reports++;
+		}
+
+		if (num_reports > 0) {
+			ksceKernelPowerTick(0);
+			pData->reportNum = num_reports;
+		}
+
+		pData++;
+		}
+	if (port == SCE_TOUCH_PORT_BACK){
+		i = 0;
+		unsigned int num_reports = 0;
+		
+		if (ds3->r3) {
+			pData->report[i].id = i;
+			pData->report[i].x = (1520);
+			pData->report[i].y = (450);
+			num_reports++;
+			i++;
+		}
+
+		if (ds3->l3) {
+			pData->report[i].id = i;
+			pData->report[i].x = (400);
+			pData->report[i].y = (450);
+			num_reports++;
+		}
+
+		if (num_reports > 0) {
+			ksceKernelPowerTick(0);
+			pData->reportNum = num_reports;
+		}
+
+		pData++;
+	}
+}
+
+DECL_FUNC_HOOK(SceTouch_ksceTouchPeek, SceUInt32 port, SceTouchData *pData, SceUInt32 nBufs)
+{
+	int ret = TAI_CONTINUE(int, SceTouch_ksceTouchPeek_ref, port, pData, nBufs);
+
+	if (ret >= 0 && ds3_connected)
+		patch_touch_data(port, pData, nBufs, &ds3_input);
+
+	return ret;
+}
+
+DECL_FUNC_HOOK(SceTouch_ksceTouchPeekRegion, SceUInt32 port, SceTouchData *pData, SceUInt32 nBufs, int region)
+{
+	int ret = TAI_CONTINUE(int, SceTouch_ksceTouchPeekRegion_ref, port, pData, nBufs, region);
+
+	if (ret >= 0 && ds3_connected)
+		patch_touch_data(port, pData, nBufs, &ds3_input);
+
+	return ret;
+}
+
+DECL_FUNC_HOOK(SceTouch_ksceTouchRead, SceUInt32 port, SceTouchData *pData, SceUInt32 nBufs)
+{
+	int ret = TAI_CONTINUE(int, SceTouch_ksceTouchRead_ref, port, pData, nBufs);
+
+	if (ret >= 0 && ds3_connected)
+		patch_touch_data(port, pData, nBufs, &ds3_input);
+
+	return ret;
+}
+
+DECL_FUNC_HOOK(SceTouch_ksceTouchReadRegion, SceUInt32 port, SceTouchData *pData, SceUInt32 nBufs, int region)
+{
+	int ret = TAI_CONTINUE(int, SceTouch_ksceTouchReadRegion_ref, port, pData, nBufs, region);
+
+	if (ret >= 0 && ds3_connected)
+		patch_touch_data(port, pData, nBufs, &ds3_input);
+
+	return ret;
+}
+
 static void patch_ctrl_data(const struct ds3_input_report *ds3, SceCtrlData *pad_data)
 {
+
 	signed char ldx, ldy, rdx, rdy;
 	unsigned int buttons = 0;
 	int left_js_moved = 0;
@@ -298,20 +398,11 @@ static void patch_ctrl_data(const struct ds3_input_report *ds3, SceCtrlData *pad
 	if (ds3->left)
 		buttons |= SCE_CTRL_LEFT;
 
+	// Following 2 if starments are changed so that Borderlands picks up L1 and R1 the triggers
 	if (ds3->l1)
-		buttons |= SCE_CTRL_LTRIGGER;
-	if (ds3->r1)
-		buttons |= SCE_CTRL_RTRIGGER;
-
-	if (ds3->l2)
 		buttons |= SCE_CTRL_L1;
-	if (ds3->r2)
+	if (ds3->r1)
 		buttons |= SCE_CTRL_R1;
-
-	if (ds3->l3)
-		buttons |= SCE_CTRL_L3;
-	if (ds3->r3)
-		buttons |= SCE_CTRL_R3;
 
 	if (ds3->select)
 		buttons |= SCE_CTRL_SELECT;
@@ -712,6 +803,19 @@ int module_start(SceSize argc, const void *args)
 	BIND_FUNC_EXPORT_HOOK(SceCtrl_sceCtrlReadBufferPositiveExt2, KERNEL_PID,
 		"SceCtrl", TAI_ANY_LIBRARY, 0xA7178860);
 
+
+	BIND_FUNC_EXPORT_HOOK(SceTouch_ksceTouchPeek, KERNEL_PID,
+		"SceTouch", TAI_ANY_LIBRARY, 0xBAD1960B);
+
+	BIND_FUNC_EXPORT_HOOK(SceTouch_ksceTouchPeekRegion, KERNEL_PID,
+		"SceTouch", TAI_ANY_LIBRARY, 0x9B3F7207);
+
+	BIND_FUNC_EXPORT_HOOK(SceTouch_ksceTouchRead, KERNEL_PID,
+		"SceTouch", TAI_ANY_LIBRARY, 0x70C8AACE);
+
+	BIND_FUNC_EXPORT_HOOK(SceTouch_ksceTouchReadRegion, KERNEL_PID,
+		"SceTouch", TAI_ANY_LIBRARY, 0x9A91F624);
+
 	SceKernelHeapCreateOpt opt;
 	opt.size = 0x1C;
 	opt.uselock = 0x100;
@@ -787,6 +891,11 @@ int module_stop(SceSize argc, const void *args)
 	UNBIND_FUNC_HOOK(SceCtrl_sceCtrlReadBufferPositive2);
 	UNBIND_FUNC_HOOK(SceCtrl_sceCtrlReadBufferPositiveExt);
 	UNBIND_FUNC_HOOK(SceCtrl_sceCtrlReadBufferPositiveExt2);
+
+	UNBIND_FUNC_HOOK(SceTouch_ksceTouchPeek);
+	UNBIND_FUNC_HOOK(SceTouch_ksceTouchPeekRegion);
+	UNBIND_FUNC_HOOK(SceTouch_ksceTouchPeek);
+	UNBIND_FUNC_HOOK(SceTouch_ksceTouchPeekRegion);
 
 	/*if (SceBt_sub_2292CE4_0x2292D18_patch_uid > 0) {
 		taiInjectReleaseForKernel(SceBt_sub_2292CE4_0x2292D18_patch_uid);
